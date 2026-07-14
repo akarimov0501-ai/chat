@@ -570,8 +570,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-<<<<<<< HEAD
-=======
             {/* Model Selector Dropdown */}
             {activeSession && (
               <div className="relative" ref={modelDropdownRef}>
@@ -650,8 +648,6 @@ export default function App() {
                 </AnimatePresence>
               </div>
             )}
-
->>>>>>> 76e7643 (Model tanlash va Vercel auto-connect qo'shildi)
             {/* Persona Selector Pill */}
             {activeSession && (
               <div className="hidden md:flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 py-1 px-2.5">
@@ -701,8 +697,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-<<<<<<< HEAD
-=======
         {/* API not connected warning */}
         <AnimatePresence>
           {apiConnected === false && !error && (
@@ -717,8 +711,6 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-
->>>>>>> 76e7643 (Model tanlash va Vercel auto-connect qo'shildi)
         {/* Content Panel */}
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
           {!activeSession || activeSession.messages.length === 0 ? (
