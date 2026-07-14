@@ -16,6 +16,7 @@ export interface ChatSession {
   title: string;
   messages: ChatMessage[];
   persona: PersonaType;
+  model: string;
   createdAt: string;
 }
 
@@ -27,4 +28,12 @@ export interface PersonaConfig {
   systemInstruction: string;
   placeholder: string;
   suggestions: string[];
+}
+
+export interface ModelConfig {
+  id: string;
+  name: string;
+  description: string;
+  badge: string;
+  badgeColor: string;
 }

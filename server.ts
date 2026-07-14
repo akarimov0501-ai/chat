@@ -4,10 +4,13 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
+// dotenv faqat mavjud .env faylini yuklaydi.
+// Vercel'da environment o'zgaruvchilari avtomatik inject qilinadi,
+// shuning uchun alohida sozlash talab qilinmaydi.
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 // Body parser with size limit for base64 image uploads
 app.use(express.json({ limit: "20mb" }));
@@ -42,10 +45,23 @@ const PERSONA_INSTRUCTIONS: Record<string, string> = {
   analyst: "Siz tajribali moliya, biznes va ma'lumotlar tahlilchisiz. Ma'lumotlarni chuqur tahlil qilish, jadvallar tuzish, tendensiyalarni aniqlash va strategik qarorlar qabul qilishda yordam berasiz. Javoblaringiz tahliliy, mantiqiy, dalillarga asoslangan bo'lib, xulosalarni aniq va tushunarli jadval yoki ro'yxat ko'rinishida taqdim eting."
 };
 
+// Modellar ro'yxatini olish uchun endpoint
+app.get("/api/models", (req, res) => {
+  // Modellar ro'yxati frontend'da saqlanadi (src/data/models.ts).
+  // Bu endpoint faqat API kalit mavjudligini tekshiradi.
+  const hasApiKey = !!process.env.GEMINI_API_KEY;
+  res.json({ 
+    connected: hasApiKey,
+    message: hasApiKey 
+      ? "API kalit sozlangan. Modellar tayyor." 
+      : "GEMINI_API_KEY topilmadi. Vercel Dashboard > Settings > Environment Variables bo'limida sozlang."
+  });
+});
+
 // API routes
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages, persona = "general" } = req.body;
+    const { messages, persona = "general", model = "gemini-2.5-flash" } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat tarixi yuborilmadi." });
@@ -80,9 +96,9 @@ app.post("/api/chat", async (req, res) => {
 
     const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
 
-    // Call generateContent using model 'gemini-3.5-flash'
+    // Call generateContent using the selected model
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model,
       contents,
       config: {
         systemInstruction,
@@ -91,7 +107,7 @@ app.post("/api/chat", async (req, res) => {
     });
 
     const replyText = response.text || "Kechirasiz, javob olishda xatolik yuz berdi.";
-    res.json({ reply: replyText });
+    res.json({ reply: replyText, model });
   } catch (error: any) {
     console.error("Gemini API error:", error);
     res.status(500).json({ 
@@ -101,7 +117,13 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", time: new Date() });
+  const hasApiKey = !!process.env.GEMINI_API_KEY;
+  res.json({ 
+    status: hasApiKey ? "ok" : "no_key",
+    connected: hasApiKey, 
+    time: new Date(),
+    environment: process.env.VERCEL ? "vercel" : "local"
+  });
 });
 
 // Vite middleware and static serving

@@ -21,11 +21,18 @@ import {
   MessageSquare,
   HelpCircle,
   Compass,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  Cpu,
+  Zap,
+  CircleCheck,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChatSession, ChatMessage, PersonaType } from './types';
 import { PERSONAS } from './data/personas';
+import { MODELS, DEFAULT_MODEL_ID } from './data/models';
 import MarkdownRenderer from './components/MarkdownRenderer';
 
 export default function App() {
@@ -39,10 +46,41 @@ export default function App() {
   const [editingTitle, setEditingTitle] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Check API health on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setApiConnected(data.connected === true);
+      } catch {
+        setApiConnected(false);
+      }
+    };
+    checkHealth();
+    // Re-check every 30 seconds
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Close model dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Load sessions from LocalStorage on mount
   useEffect(() => {
@@ -51,8 +89,13 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved) as ChatSession[];
         if (parsed.length > 0) {
-          setSessions(parsed);
-          setActiveSessionId(parsed[0].id);
+          // Migrate old sessions that don't have model field
+          const migrated = parsed.map(s => ({
+            ...s,
+            model: s.model || DEFAULT_MODEL_ID
+          }));
+          setSessions(migrated);
+          setActiveSessionId(migrated[0].id);
           return;
         }
       } catch (e) {
@@ -66,6 +109,7 @@ export default function App() {
       title: 'Yangi suhbat',
       messages: [],
       persona: 'general',
+      model: DEFAULT_MODEL_ID,
       createdAt: new Date().toISOString()
     };
     setSessions([initialSession]);
@@ -100,6 +144,7 @@ export default function App() {
       title: `${PERSONAS.find(p => p.id === persona)?.name || 'Yangi suhbat'}`,
       messages: [],
       persona,
+      model: activeSession?.model || DEFAULT_MODEL_ID,
       createdAt: new Date().toISOString()
     };
     setSessions(prev => [newSession, ...prev]);
@@ -124,6 +169,7 @@ export default function App() {
         title: 'Yangi suhbat',
         messages: [],
         persona: 'general',
+        model: DEFAULT_MODEL_ID,
         createdAt: new Date().toISOString()
       };
       setSessions([fallbackSession]);
@@ -168,6 +214,13 @@ export default function App() {
     }));
   };
 
+  const changeSessionModel = (modelId: string) => {
+    if (!activeSession) return;
+    setSessions(prev => prev.map(s => 
+      s.id === activeSession.id ? { ...s, model: modelId } : s
+    ));
+    setModelDropdownOpen(false);
+  };
   const clearSessionHistory = () => {
     if (!activeSession) return;
     setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, messages: [] } : s));
@@ -258,7 +311,8 @@ export default function App() {
             content: m.content,
             image: m.image
           })),
-          persona: activeSession.persona
+          persona: activeSession.persona,
+          model: activeSession.model || DEFAULT_MODEL_ID
         })
       });
 
@@ -276,6 +330,10 @@ export default function App() {
       };
 
       setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, messages: [...updatedMessages, modelMessage] } : s));
+      // If connected status wasn't set, mark as connected on successful response
+      if (apiConnected === null || apiConnected === false) {
+        setApiConnected(true);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
@@ -287,8 +345,10 @@ export default function App() {
   const exportChat = () => {
     if (!activeSession || activeSession.messages.length === 0) return;
     
+    const selectedModel = MODELS.find(m => m.id === activeSession.model);
     let content = `=== AI Chatbot: ${activeSession.title} ===\n`;
     content += `Persona: ${PERSONAS.find(p => p.id === activeSession.persona)?.name}\n`;
+    content += `Model: ${selectedModel?.name || activeSession.model}\n`;
     content += `Sana: ${new Date(activeSession.createdAt).toLocaleDateString()}\n\n`;
 
     activeSession.messages.forEach(msg => {
@@ -317,7 +377,20 @@ export default function App() {
     }
   };
 
+  // Badge color helper
+  const getBadgeClasses = (color: string) => {
+    const map: Record<string, string> = {
+      emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      violet: 'bg-violet-50 text-violet-700 border-violet-200',
+      blue: 'bg-blue-50 text-blue-700 border-blue-200',
+      amber: 'bg-amber-50 text-amber-700 border-amber-200',
+      rose: 'bg-rose-50 text-rose-700 border-rose-200',
+    };
+    return map[color] || 'bg-slate-50 text-slate-700 border-slate-200';
+  };
+
   const activePersona = PERSONAS.find(p => p.id === (activeSession?.persona || 'general'))!;
+  const activeModel = MODELS.find(m => m.id === (activeSession?.model || DEFAULT_MODEL_ID)) || MODELS[0];
 
   return (
     <div 
@@ -450,10 +523,26 @@ export default function App() {
         <div className="p-4 border-t border-slate-100">
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-semibold text-slate-600">API Holati: Faol</span>
+              {apiConnected === true ? (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-semibold text-slate-600">API Holati: Faol</span>
+                </>
+              ) : apiConnected === false ? (
+                <>
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-xs font-semibold text-red-600">API Holati: Ulanmagan</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-semibold text-slate-500">Tekshirilmoqda...</span>
+                </>
+              )}
             </div>
-            <p className="text-[10px] text-slate-400">Model: Gemini 3.5 Flash</p>
+            <p className="text-[10px] text-slate-400">
+              Model: {activeModel.name}
+            </p>
           </div>
         </div>
       </div>
@@ -481,6 +570,88 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+<<<<<<< HEAD
+=======
+            {/* Model Selector Dropdown */}
+            {activeSession && (
+              <div className="relative" ref={modelDropdownRef}>
+                <button
+                  id="model-selector"
+                  onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
+                >
+                  <Cpu className="h-3.5 w-3.5 text-indigo-500" />
+                  <span className="hidden sm:inline max-w-[120px] truncate">{activeModel.name}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getBadgeClasses(activeModel.badgeColor)} hidden lg:inline-block`}>
+                    {activeModel.badge}
+                  </span>
+                  <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${modelDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                  {modelDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 z-50 overflow-hidden"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                        <div className="flex items-center gap-2">
+                          <Cpu className="h-4 w-4 text-indigo-500" />
+                          <span className="text-xs font-bold text-slate-700">Model tanlang</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Suhbat uchun AI modelni tanlang</p>
+                      </div>
+
+                      <div className="p-2 max-h-[320px] overflow-y-auto">
+                        {MODELS.map(model => {
+                          const isActive = activeSession.model === model.id;
+                          return (
+                            <button
+                              key={model.id}
+                              onClick={() => changeSessionModel(model.id)}
+                              className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all cursor-pointer group ${
+                                isActive 
+                                  ? 'bg-indigo-50 border border-indigo-100' 
+                                  : 'hover:bg-slate-50 border border-transparent'
+                              }`}
+                            >
+                              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg mt-0.5 ${
+                                isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'
+                              }`}>
+                                {isActive ? <CircleCheck className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-semibold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                    {model.name}
+                                  </span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getBadgeClasses(model.badgeColor)}`}>
+                                    {model.badge}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{model.description}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                        <p className="text-[10px] text-slate-400 text-center">
+                          Modellar ro'yxatini <code className="bg-slate-100 px-1 py-0.5 rounded text-[9px] font-mono">src/data/models.ts</code> faylida tahrirlang
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+>>>>>>> 76e7643 (Model tanlash va Vercel auto-connect qo'shildi)
             {/* Persona Selector Pill */}
             {activeSession && (
               <div className="hidden md:flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 py-1 px-2.5">
@@ -530,6 +701,24 @@ export default function App() {
           )}
         </AnimatePresence>
 
+<<<<<<< HEAD
+=======
+        {/* API not connected warning */}
+        <AnimatePresence>
+          {apiConnected === false && !error && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-amber-50 border-b border-amber-200 text-amber-800 px-6 py-3 text-sm flex items-center gap-2 shrink-0 font-medium"
+            >
+              <WifiOff className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>API kalit topilmadi. Vercel Dashboard → Settings → Environment Variables bo'limida <strong>GEMINI_API_KEY</strong> ni sozlang.</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+>>>>>>> 76e7643 (Model tanlash va Vercel auto-connect qo'shildi)
         {/* Content Panel */}
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
           {!activeSession || activeSession.messages.length === 0 ? (
@@ -562,6 +751,19 @@ export default function App() {
                 {activePersona.description}
               </motion.p>
 
+              {/* Active Model Badge */}
+              <motion.div
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.25 }}
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-white border border-slate-200 px-4 py-1.5 shadow-sm"
+              >
+                <Cpu className="h-3.5 w-3.5 text-indigo-500" />
+                <span className="text-xs font-semibold text-slate-600">{activeModel.name}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getBadgeClasses(activeModel.badgeColor)}`}>
+                  {activeModel.badge}
+                </span>
+              </motion.div>
               {/* Persona Quick Chooser (Tabs) */}
               <motion.div 
                 initial={{ y: 10, opacity: 0 }}
