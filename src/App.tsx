@@ -27,13 +27,15 @@ import {
   Zap,
   CircleCheck,
   Wifi,
-  WifiOff
+  WifiOff,
+  Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChatSession, ChatMessage, PersonaType } from './types';
 import { PERSONAS } from './data/personas';
 import { MODELS, DEFAULT_MODEL_ID } from './data/models';
 import MarkdownRenderer from './components/MarkdownRenderer';
+import DesignStudio from './components/DesignStudio';
 
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -48,6 +50,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'chat' | 'design'>('chat');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -438,8 +441,37 @@ export default function App() {
           </button>
         </div>
 
+        {/* Mode Tabs */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl">
+            <button
+              onClick={() => setMode('chat')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                mode === 'chat'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Suhbat
+            </button>
+            <button
+              onClick={() => setMode('design')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                mode === 'design'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Palette className="h-3.5 w-3.5" />
+              Dizayn
+            </button>
+          </div>
+        </div>
+
         {/* New Chat Button */}
-        <div className="p-4">
+        {mode === 'chat' && (
+        <div className="px-4 pb-2">
           <button
             onClick={() => createNewSession('general')}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 border border-indigo-100 py-2.5 px-4 text-sm font-semibold text-indigo-700 transition-all hover:bg-indigo-100 active:scale-98 cursor-pointer"
@@ -448,9 +480,10 @@ export default function App() {
             <span>Yangi suhbat</span>
           </button>
         </div>
+        )}
 
         {/* Sessions List */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+        <div className={`flex-1 overflow-y-auto px-3 py-2 space-y-1 ${mode !== 'chat' ? 'hidden' : ''}`}>
           <div className="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Suhbatlar tarixi</div>
           {sessions.map((session) => {
             const isSelected = session.id === activeSessionId;
@@ -519,35 +552,12 @@ export default function App() {
           })}
         </div>
 
-        {/* Sidebar Footer Info */}
-        <div className="p-4 border-t border-slate-100">
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-            <div className="flex items-center gap-2 mb-2">
-              {apiConnected === true ? (
-                <>
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs font-semibold text-slate-600">API Holati: Faol</span>
-                </>
-              ) : apiConnected === false ? (
-                <>
-                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span className="text-xs font-semibold text-red-600">API Holati: Ulanmagan</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs font-semibold text-slate-500">Tekshirilmoqda...</span>
-                </>
-              )}
-            </div>
-            <p className="text-[10px] text-slate-400">
-              Model: {activeModel.name}
-            </p>
-          </div>
-        </div>
       </div>
 
-      {/* Main Chat Interface */}
+      {/* Main Content Area */}
+      {mode === 'design' ? (
+        <DesignStudio model={activeSession?.model || DEFAULT_MODEL_ID} />
+      ) : (
       <div className="flex flex-1 flex-col h-full overflow-hidden bg-[#F8FAFC] relative">
         {/* Header */}
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 bg-white/80 backdrop-blur-sm px-6 sticky top-0 z-10">
@@ -979,6 +989,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
