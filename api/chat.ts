@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from "@google/genai";
 
-// System instructions in Uzbek based on selected persona
 const PERSONA_INSTRUCTIONS: Record<string, string> = {
   general: "Siz foydali, aqlli va muloyim sun'iy intellekt yordamchisiz. Savollarga har doim aniq, batafsil va mantiqiy javob bering. Javobingizni o'zbek tilida taqdim eting, agar foydalanuvchi boshqa tilda so'ramagan bo'lsa. Matnni chiroyli formatlash uchun Markdown belgilash turlaridan (masalan, sarlavhalar, ro'yxatlar, qalin matn, jadvallar) keng foydalaning.",
   coder: "Siz tajribali, yuqori malakali dasturchisiz. Kod yozish, xatolarni tahlil qilish va dastur arxitekturasini loyihalashda mukammal yordam berasiz. Javoblaringizda doimo toza, tushunarli va izohli kod namunalarini keltiring. Mumkin qadar eng yaxshi amaliyotlarni (best practices) tushuntiring. Markdown yordamida kod bloklarini va tillarni to'g'ri ko'rsating (masalan, ```typescript, ```python, ```html, ```css).",
@@ -12,36 +11,30 @@ const PERSONA_INSTRUCTIONS: Record<string, string> = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Faqat POST so'rovlarni qabul qilish
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Faqat POST so'rov qabul qilinadi." });
   }
 
   try {
-    const { messages, persona = "general", model = "gemini-2.5-flash" } = req.body;
+    const { messages, persona = "general", model = "gemini-2.5-flash", stream = false } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat tarixi yuborilmadi." });
     }
 
-    // API kalitni Vercel Environment Variables'dan olish
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ 
-        error: "GEMINI_API_KEY topilmadi. Vercel Dashboard > Settings > Environment Variables bo'limida GEMINI_API_KEY ni sozlang." 
+        error: "GEMINI_API_KEY topilmadi. Vercel Dashboard > Settings > Environment Variables bo'limida sozlang." 
       });
     }
 
     const ai = new GoogleGenAI({ apiKey });
 
-    // Format messages for @google/genai SDK
     const contents = messages.map((msg: any) => {
       const parts: any[] = [];
-      
-      // Add text content
       parts.push({ text: msg.content });
       
-      // Add inline image if present
       if (msg.image && msg.image.data) {
         const base64Data = msg.image.data.split(",")[1] || msg.image.data;
         parts.push({
@@ -60,7 +53,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
 
-    // Call generateContent using the selected model
+    // Agar stream rejim so'ralgan bo'lsa (Dizayn live holati uchun)
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        }
+      });
+
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    // Oddiy rejim
     const response = await ai.models.generateContent({
       model,
       contents,

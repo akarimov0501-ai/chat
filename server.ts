@@ -4,18 +4,13 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
-// dotenv faqat mavjud .env faylini yuklaydi.
-// Vercel'da environment o'zgaruvchilari avtomatik inject qilinadi,
-// shuning uchun alohida sozlash talab qilinmaydi.
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-// Body parser with size limit for base64 image uploads
 app.use(express.json({ limit: "20mb" }));
 
-// Lazy initializer for Gemini client to prevent crash if key is missing
 let aiClient: GoogleGenAI | null = null;
 
 function getGeminiClient(): GoogleGenAI {
@@ -36,7 +31,6 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// System instructions in Uzbek based on selected persona
 const PERSONA_INSTRUCTIONS: Record<string, string> = {
   general: "Siz foydali, aqlli va muloyim sun'iy intellekt yordamchisiz. Savollarga har doim aniq, batafsil va mantiqiy javob bering. Javobingizni o'zbek tilida taqdim eting, agar foydalanuvchi boshqa tilda so'ramagan bo'lsa. Matnni chiroyli formatlash uchun Markdown belgilash turlaridan (masalan, sarlavhalar, ro'yxatlar, qalin matn, jadvallar) keng foydalaning.",
   coder: "Siz tajribali, yuqori malakali dasturchisiz. Kod yozish, xatolarni tahlil qilish va dastur arxitekturasini loyihalashda mukammal yordam berasiz. Javoblaringizda doimo toza, tushunarli va izohli kod namunalarini keltiring. Mumkin qadar eng yaxshi amaliyotlarni (best practices) tushuntiring. Markdown yordamida kod bloklarini va tillarni to'g'ri ko'rsating (masalan, ```typescript, ```python, ```html, ```css).",
@@ -46,23 +40,19 @@ const PERSONA_INSTRUCTIONS: Record<string, string> = {
   designer: "You are an expert UI/UX designer and frontend developer. When the user describes a UI design, you MUST generate a COMPLETE, self-contained HTML page with all CSS included inline in <style> tags and any JavaScript in <script> tags. The design must be modern, responsive, visually stunning with gradients, shadows, animations, and professional typography (use Google Fonts via CDN link). Use vibrant colors and micro-animations. Return ONLY the HTML code wrapped in ```html code block. Do NOT add any explanation or description outside the code block. The HTML must be a complete document starting with <!DOCTYPE html>."
 };
 
-// Modellar ro'yxatini olish uchun endpoint
 app.get("/api/models", (req, res) => {
-  // Modellar ro'yxati frontend'da saqlanadi (src/data/models.ts).
-  // Bu endpoint faqat API kalit mavjudligini tekshiradi.
   const hasApiKey = !!process.env.GEMINI_API_KEY;
   res.json({ 
     connected: hasApiKey,
     message: hasApiKey 
       ? "API kalit sozlangan. Modellar tayyor." 
-      : "GEMINI_API_KEY topilmadi. Vercel Dashboard > Settings > Environment Variables bo'limida sozlang."
+      : "GEMINI_API_KEY topilmadi."
   });
 });
 
-// API routes
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages, persona = "general", model = "gemini-2.5-flash" } = req.body;
+    const { messages, persona = "general", model = "gemini-2.5-flash", stream = false } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat tarixi yuborilmadi." });
@@ -70,16 +60,11 @@ app.post("/api/chat", async (req, res) => {
 
     const ai = getGeminiClient();
 
-    // Format messages for @google/genai SDK
-    const contents = messages.map((msg) => {
+    const contents = messages.map((msg: any) => {
       const parts: any[] = [];
-      
-      // Add text content
       parts.push({ text: msg.content });
       
-      // Add inline image if present
       if (msg.image && msg.image.data) {
-        // Strip data prefix if present (e.g. "data:image/png;base64,")
         const base64Data = msg.image.data.split(",")[1] || msg.image.data;
         parts.push({
           inlineData: {
@@ -97,7 +82,30 @@ app.post("/api/chat", async (req, res) => {
 
     const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
 
-    // Call generateContent using the selected model
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        }
+      });
+
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
     const response = await ai.models.generateContent({
       model,
       contents,
@@ -127,7 +135,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Vite middleware and static serving
 async function setupVite() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

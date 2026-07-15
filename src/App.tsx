@@ -556,7 +556,10 @@ export default function App() {
 
       {/* Main Content Area */}
       {mode === 'design' ? (
-        <DesignStudio model={activeSession?.model || DEFAULT_MODEL_ID} />
+        <DesignStudio 
+          model={activeSession?.model || DEFAULT_MODEL_ID} 
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        />
       ) : (
       <div className="flex flex-1 flex-col h-full overflow-hidden bg-[#F8FAFC] relative">
         {/* Header */}
