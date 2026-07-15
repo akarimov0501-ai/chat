@@ -28,14 +28,19 @@ interface DesignStudioProps {
   setDesigns: React.Dispatch<React.SetStateAction<DesignEntry[]>>;
   activeDesignId: string;
   setActiveDesignId: (id: string) => void;
+  openRouterKey?: string;
 }
 
-const DESIGN_SUGGESTIONS = [
-  "Login sahifasi — gradient fon, glassmorphism karta va chiroyli tugma bilan",
-  "Dashboard — statistik kartalar, foydalanuvchilar jadvali va navigatsiya",
-  "Narxlar sahifasi — 3 xil tarif rejasi, mashhur tarifga yorqin fon va effekt",
-  "Portfolio sahifasi — hero qism, loyihalar galereyasi va bog'lanish shakli",
+export const PALETTES = [
+  { id: 'indigo', name: 'Indigo Dream', primary: '#4f46e5', secondary: '#8b5cf6', accent: '#d946ef', bg: '#f8fafc', text: 'To\'q binafsha/indigo ranglar kombinatsiyasi' },
+  { id: 'emerald', name: 'Emerald Forest', primary: '#059669', secondary: '#10b981', accent: '#f59e0b', bg: '#f0fdf4', text: 'Zumrad va toza yashil ranglar kombinatsiyasi, tillarang urg\'u bilan' },
+  { id: 'rose', name: 'Rose Sunset', primary: '#e11d48', secondary: '#f43f5e', accent: '#fda4af', bg: '#fff1f2', text: 'Yorqin atirgul va to\'q qizil ranglar uyg\'unligi' },
+  { id: 'midnight', name: 'Midnight Dark', primary: '#6366f1', secondary: '#a855f7', accent: '#f43f5e', bg: '#0f172a', text: 'To\'q ko\'k va neon binafsha rangli qorong\'u rejim (Dark Mode)' },
+  { id: 'ocean', name: 'Ocean Breeze', primary: '#0284c7', secondary: '#0ea5e9', accent: '#06b6d4', bg: '#f0f9ff', text: 'Moviy okean va tiniq ko\'k suv ranglari uyg\'unligi' }
 ];
+
+export const FONTS = ['Inter', 'Outfit', 'Roboto', 'Playfair Display', 'Merriweather', 'Georgia', 'Courier New'];
+export const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px', '48px'];
 
 export default function DesignStudio({ 
   model, 
@@ -43,7 +48,8 @@ export default function DesignStudio({
   designs,
   setDesigns,
   activeDesignId,
-  setActiveDesignId
+  setActiveDesignId,
+  openRouterKey = ""
 }: DesignStudioProps) {
   const [prompt, setPrompt] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
@@ -53,6 +59,14 @@ export default function DesignStudio({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  
+  // Custom Design & Override States
+  const [selectedPalette, setSelectedPalette] = useState<string>('indigo');
+  const [overrideTarget, setOverrideTarget] = useState<'all' | 'headings' | 'body' | 'buttons'>('headings');
+  const [overrideFont, setOverrideFont] = useState<string>('Outfit');
+  const [overrideSize, setOverrideSize] = useState<string>('24px');
+  const [showEditorPanel, setShowEditorPanel] = useState<boolean>(false);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -93,8 +107,62 @@ export default function DesignStudio({
     }
   }, []);
 
+const DESIGN_SUGGESTIONS = [
+  "Login sahifasi — gradient fon, glassmorphism karta va chiroyli tugma bilan",
+  "Dashboard — statistik kartalar, foydalanuvchilar jadvali va navigatsiya",
+  "Narxlar sahifasi — 3 xil tarif rejasi, mashhur tarifga yorqin fon va effekt",
+  "Portfolio sahifasi — hero qism, loyihalar galereyasi va bog'lanish shakli",
+];
+
   // Agar live rejimda kod kelayotgan bo'lsa, uni real-time ko'rsatish
   const activeCodeDisplay = generatedCode || streamText;
+
+  const applyOverrides = () => {
+    if (!iframeRef.current) return;
+    const iframe = iframeRef.current;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    // 1. Google fonts link inject qilish (agar ulanmagan bo'lsa)
+    const fontId = 'ai-oshno-font-override-link';
+    let fontLink = doc.getElementById(fontId) as HTMLLinkElement;
+    if (!fontLink) {
+      fontLink = doc.createElement('link');
+      fontLink.id = fontId;
+      fontLink.rel = 'stylesheet';
+      doc.head.appendChild(fontLink);
+    }
+    const formattedFont = overrideFont.replace(/ /g, '+');
+    fontLink.href = `https://fonts.googleapis.com/css2?family=${formattedFont}:wght@300;400;500;600;700&display=swap`;
+
+    // 2. Custom CSS inject
+    const styleId = 'ai-oshno-style-override-el';
+    let styleElement = doc.getElementById(styleId) as HTMLStyleElement;
+    if (!styleElement) {
+      styleElement = doc.createElement('style');
+      styleElement.id = styleId;
+      doc.head.appendChild(styleElement);
+    }
+
+    let selector = '';
+    if (overrideTarget === 'all') selector = '*';
+    else if (overrideTarget === 'headings') selector = 'h1, h2, h3, h4, h5, h6';
+    else if (overrideTarget === 'body') selector = 'body, p, span, li, a';
+    else if (overrideTarget === 'buttons') selector = 'button, .btn, input[type="button"], input[type="submit"]';
+
+    styleElement.innerHTML = `
+      ${selector} {
+        font-family: '${overrideFont}', sans-serif !important;
+        ${overrideSize ? `font-size: ${overrideSize} !important;` : ''}
+      }
+    `;
+  };
+
+  // Iframe yuklanganda va sozlamalar o'zgarganda overrides ni qo'llash
+  useEffect(() => {
+    const timer = setTimeout(applyOverrides, 300);
+    return () => clearTimeout(timer);
+  }, [generatedCode, streamText, overrideTarget, overrideFont, overrideSize, viewMode]);
 
   // Iframe ni har gal generatedCode o'zgarganda tozalab yangilash
   useEffect(() => {
@@ -139,15 +207,21 @@ export default function DesignStudio({
     setStreamText('');
     setViewMode('preview');
 
+    // Rang palitrasi ma'lumotlarini promptga qo'shish
+    const palette = PALETTES.find(p => p.id === selectedPalette);
+    const paletteInstruction = palette ? `\n\n[Dizayn Uslubi Sozlamalari (Buni albatta inobatga oling)]: Ranglar palitrasi bo'yicha: asosiy rang (primary) "${palette.primary}", ikkinchi darajali rang (secondary) "${palette.secondary}", urg'u beruvchi rang (accent) "${palette.accent}" va fon (background) "${palette.bg}" bo'lsin. UI elementlarida, tugmalarda, kartalarda va fonlarda ushbu ranglardan uyg'un tarzda foydalaning.` : '';
+    const finalPrompt = textToSend + paletteInstruction;
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: textToSend }],
+          messages: [{ role: 'user', content: finalPrompt }],
           persona: 'designer',
           model,
-          stream: true // Stream rejim
+          stream: true, // Stream rejim
+          openRouterKey
         })
       });
 
@@ -322,6 +396,18 @@ export default function DesignStudio({
               <Download className="h-4 w-4 md:h-3.5 md:w-3.5" />
               <span className="hidden lg:inline ml-1">Yuklash</span>
             </button>
+            <button
+              onClick={() => setShowEditorPanel(!showEditorPanel)}
+              className={`flex items-center justify-center p-1.5 md:px-3 md:py-2 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                showEditorPanel 
+                  ? 'bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-500/10' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              title="Uslub va shriftlarni tahrirlash"
+            >
+              <Palette className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="hidden sm:inline ml-1">Uslub</span>
+            </button>
           </div>
         )}
       </header>
@@ -392,75 +478,182 @@ export default function DesignStudio({
           </div>
         ) : (
           /* Preview / Code Area */
-          <div className="flex items-center justify-center h-full p-2 md:p-6 bg-slate-100/50">
-            {loading && !activeCodeDisplay ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col items-center gap-4"
-              >
-                <div className="relative">
-                  <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-xl">
-                    <Palette className="h-7 w-7 text-white animate-pulse" />
-                  </div>
-                  <div className="absolute -inset-2 rounded-3xl border-2 border-violet-300 animate-ping opacity-35"></div>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-bold text-slate-700">Dizayn yuklanmoqda...</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">AI kodingizni tayyorlamoqda</p>
-                </div>
-              </motion.div>
-            ) : viewMode === 'preview' ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="w-full h-full flex justify-center"
-              >
-                <div 
-                  className="bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden transition-all duration-300 h-full relative"
-                  style={{ width: viewportWidths[viewport], maxWidth: '100%' }}
+          <div className="flex-1 flex h-full overflow-hidden bg-slate-100/50">
+            {/* Visualizer Frame */}
+            <div className="flex-1 flex items-center justify-center p-2 md:p-6 h-full overflow-hidden">
+              {loading && !activeCodeDisplay ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center gap-4"
                 >
-                  <iframe
-                    ref={iframeRef}
-                    className="w-full h-full border-0 bg-white"
-                    title="Design Preview"
-                    sandbox="allow-scripts allow-same-origin"
-                  />
-                  {loading && (
-                    <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-2 py-1 rounded-md flex items-center gap-1.5 shadow backdrop-blur-sm z-20">
-                      <div className="h-2 w-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Yozilmoqda...
+                  <div className="relative">
+                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-xl">
+                      <Palette className="h-7 w-7 text-white animate-pulse" />
                     </div>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="w-full h-full"
-              >
-                <div className="h-full bg-[#1e1e2e] rounded-xl border border-slate-750 overflow-hidden shadow-lg flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-2 bg-[#181825] border-b border-slate-750 shrink-0">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/85"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/85"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/85"></div>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono ml-1.5">design.html</span>
-                    </div>
+                    <div className="absolute -inset-2 rounded-3xl border-2 border-violet-300 animate-ping opacity-35"></div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-slate-700">Dizayn yuklanmoqda...</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">AI kodingizni tayyorlamoqda</p>
+                  </div>
+                </motion.div>
+              ) : viewMode === 'preview' ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="w-full h-full flex justify-center"
+                >
+                  <div 
+                    className="bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden transition-all duration-300 h-full relative"
+                    style={{ width: viewportWidths[viewport], maxWidth: '100%' }}
+                  >
+                    <iframe
+                      ref={iframeRef}
+                      className="w-full h-full border-0 bg-white"
+                      title="Design Preview"
+                      sandbox="allow-scripts allow-same-origin"
+                    />
                     {loading && (
-                      <span className="text-[10px] text-violet-400 font-bold animate-pulse">
-                        AI yozmoqda...
-                      </span>
+                      <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-2 py-1 rounded-md flex items-center gap-1.5 shadow backdrop-blur-sm z-20">
+                        <div className="h-2 w-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Yozilmoqda...
+                      </div>
                     )}
                   </div>
-                  <pre className="p-4 overflow-auto flex-1 text-xs md:text-sm text-slate-300 font-mono leading-relaxed bg-[#1e1e2e]">
-                    <code>{activeCodeDisplay}</code>
-                  </pre>
+                </motion.div>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="w-full h-full"
+                >
+                  <div className="h-full bg-[#1e1e2e] rounded-xl border border-slate-750 overflow-hidden shadow-lg flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-2 bg-[#181825] border-b border-slate-750 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full bg-red-500/85"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/85"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-green-500/85"></div>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono ml-1.5">design.html</span>
+                      </div>
+                      {loading && (
+                        <span className="text-[10px] text-violet-400 font-bold animate-pulse">
+                          AI yozmoqda...
+                        </span>
+                      )}
+                    </div>
+                    <pre className="p-4 overflow-auto flex-1 text-xs md:text-sm text-slate-300 font-mono leading-relaxed bg-[#1e1e2e]">
+                      <code>{activeCodeDisplay}</code>
+                    </pre>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Style Editor Panel Side */}
+            {showEditorPanel && activeCodeDisplay && (
+              <div className="w-72 md:w-80 shrink-0 border-l border-slate-200 bg-white h-full overflow-y-auto flex flex-col animate-in slide-in-from-right duration-250 z-10">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <Palette className="h-4 w-4 text-violet-500" />
+                    <span className="text-xs font-bold text-slate-700">Uslub va Shriftlar</span>
+                  </div>
+                  <button 
+                    onClick={() => setShowEditorPanel(false)}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-              </motion.div>
+
+                <div className="p-4 space-y-5">
+                  {/* Palettes */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Ranglar Palitrasi</label>
+                    <p className="text-[9px] text-slate-400 leading-normal">Dizayn ranglarini tanlang (yaratishdan oldin tanlash tavsiya etiladi)</p>
+                    <div className="grid gap-2 pt-1">
+                      {PALETTES.map(palette => {
+                        const isSelected = selectedPalette === palette.id;
+                        return (
+                          <button
+                            key={palette.id}
+                            onClick={() => setSelectedPalette(palette.id)}
+                            className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected 
+                                ? 'border-violet-500 bg-violet-50/10 shadow-sm shadow-violet-500/5' 
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                            }`}
+                          >
+                            <div className="flex -space-x-1.5 shrink-0">
+                              <div className="w-4 h-4 rounded-full border border-white z-20" style={{ backgroundColor: palette.primary }} />
+                              <div className="w-4 h-4 rounded-full border border-white z-10" style={{ backgroundColor: palette.secondary }} />
+                              <div className="w-4 h-4 rounded-full border border-white z-0" style={{ backgroundColor: palette.accent }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-bold text-slate-700 truncate">{palette.name}</p>
+                              <p className="text-[9px] text-slate-400 truncate">{palette.text}</p>
+                            </div>
+                            {isSelected && (
+                              <div className="w-2 h-2 rounded-full bg-violet-600 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <hr className="border-slate-100" />
+
+                  {/* Overrides */}
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Dinamik Shriftlar & O'lchamlar</label>
+                    <p className="text-[9px] text-slate-400 leading-normal mb-1">Dizayn yuklangach elementlarni dinamik tarzda o'zgartiring</p>
+                    
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Target Element:</label>
+                      <select
+                        value={overrideTarget}
+                        onChange={(e) => setOverrideTarget(e.target.value as any)}
+                        className="w-full bg-slate-50 border border-slate-200 text-xs px-2.5 py-2 rounded-xl outline-none focus:border-violet-500 shadow-sm font-semibold"
+                      >
+                        <option value="headings">Sarlavhalar (h1 - h6)</option>
+                        <option value="body">Asosiy matn (p, span, a)</option>
+                        <option value="buttons">Tugmalar (button, .btn)</option>
+                        <option value="all">Barcha elementlar (*)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Shrift (Font Family):</label>
+                      <select
+                        value={overrideFont}
+                        onChange={(e) => setOverrideFont(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 text-xs px-2.5 py-2 rounded-xl outline-none focus:border-violet-500 shadow-sm font-semibold"
+                      >
+                        {FONTS.map(font => (
+                          <option key={font} value={font}>{font}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Hajmi (Font Size):</label>
+                      <select
+                        value={overrideSize}
+                        onChange={(e) => setOverrideSize(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 text-xs px-2.5 py-2 rounded-xl outline-none focus:border-violet-500 shadow-sm font-semibold"
+                      >
+                        <option value="">Standart</option>
+                        {FONT_SIZES.map(size => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

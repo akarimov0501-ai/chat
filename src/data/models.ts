@@ -42,6 +42,27 @@ export const MODELS: ModelConfig[] = [
     badge: 'Gemma',
     badgeColor: 'blue'
   },
+  {
+    id: 'openrouter/meta-llama/llama-3-8b-instruct:free',
+    name: 'Llama 3 8B Free',
+    description: 'Meta Llama 3 8B modelining bepul va tezkor versiyasi (OpenRouter)',
+    badge: 'Llama 3',
+    badgeColor: 'amber'
+  },
+  {
+    id: 'openrouter/google/gemma-2-9b-it:free',
+    name: 'Gemma 2 9B Free',
+    description: 'Google Gemma 2 9B bepul modeli (OpenRouter)',
+    badge: 'Gemma 2',
+    badgeColor: 'emerald'
+  },
+  {
+    id: 'openrouter/custom',
+    name: 'Custom OpenRouter Model...',
+    description: 'O\'zingiz istagan OpenRouter model nomini yozib ishlating',
+    badge: 'Custom',
+    badgeColor: 'violet'
+  }
 ];
 
 /** Standart (default) model ID */

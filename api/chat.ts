@@ -23,12 +23,132 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { messages, persona = "general", model = "gemini-3.5-flash", stream = false } = req.body;
+    const { messages, persona = "general", model = "gemini-3.5-flash", stream = false, openRouterKey = "" } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat tarixi yuborilmadi." });
     }
 
+    const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
+
+    // --- OpenRouter API ulanishi ---
+    const openRouterApiKey = openRouterKey || process.env.OPENROUTER_API_KEY;
+    const isOpenRouter = model.includes('/') || req.body.provider === 'openrouter';
+
+    if (isOpenRouter) {
+      if (!openRouterApiKey) {
+        return res.status(400).json({ 
+          error: "OpenRouter API Key topilmadi. Iltimos, Sozlamalar oynasida OpenRouter API kalitingizni kiriting." 
+        });
+      }
+
+      const openRouterMessages = [
+        { role: 'system', content: systemInstruction },
+        ...messages.map((m: any) => {
+          if (m.image && m.image.data) {
+            const base64Data = m.image.data.split(",")[1] || m.image.data;
+            return {
+              role: m.role === 'user' ? 'user' : 'assistant',
+              content: [
+                { type: 'text', text: m.content },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${m.image.mimeType};base64,${base64Data}`
+                  }
+                }
+              ]
+            };
+          }
+          return {
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.content
+          };
+        })
+      ];
+
+      if (stream) {
+        const responseStream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://ai-oshno.vercel.app',
+            'X-Title': 'AI-Oshno'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: openRouterMessages,
+            stream: true,
+            temperature: 0.7
+          })
+        });
+
+        if (!responseStream.ok) {
+          const errText = await responseStream.text();
+          throw new Error(`OpenRouter API xatoligi: ${errText}`);
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        res.write(`data: ${JSON.stringify({ meta: { model } })}\n\n`);
+
+        const reader = responseStream.body;
+        if (!reader) throw new Error('OpenRouter response body stream topilmadi');
+
+        const decoder = new TextDecoder('utf-8');
+        for await (const chunk of reader as any) {
+          const textChunk = typeof chunk === 'string' ? chunk : decoder.decode(chunk);
+          const lines = textChunk.split('\n');
+          for (const line of lines) {
+            const cleaned = line.trim();
+            if (cleaned.startsWith('data: ')) {
+              const dataValue = cleaned.slice(6).trim();
+              if (dataValue === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(dataValue);
+                const deltaText = parsed.choices?.[0]?.delta?.content || '';
+                if (deltaText) {
+                  res.write(`data: ${JSON.stringify({ text: deltaText })}\n\n`);
+                }
+              } catch (e) {
+                // parse error ignored
+              }
+            }
+          }
+        }
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      } else {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://ai-oshno.vercel.app',
+            'X-Title': 'AI-Oshno'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: openRouterMessages,
+            temperature: 0.7
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`OpenRouter API xatoligi: ${errText}`);
+        }
+
+        const data = await response.json();
+        const replyText = data.choices?.[0]?.message?.content || "Kechirasiz, javob olishda xatolik yuz berdi.";
+        return res.status(200).json({ reply: replyText, model });
+      }
+    }
+
+    // --- Standart Gemini API ulanishi ---
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ 
@@ -58,9 +178,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     });
 
-    const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
-
-    // Tanlangan model va fallback modellarni sinash ro'yxati
     const modelsToTry = [model, ...FALLBACK_MODELS.filter(m => m !== model)];
 
     // Stream rejim
@@ -99,7 +216,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Ishlatilgan model haqida ma'lumotni event-stream boshida yuborish
       res.write(`data: ${JSON.stringify({ meta: { model: activeModel } })}\n\n`);
 
       for await (const chunk of responseStream) {
@@ -112,7 +228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.end();
     }
 
-    // Oddiy rejim (Fallback mantiq bilan)
+    // Oddiy rejim
     let response = null;
     let activeModel = model;
     let success = false;
@@ -146,7 +262,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const replyText = response.text || "Kechirasiz, javob olishda xatolik yuz berdi.";
     return res.status(200).json({ reply: replyText, model: activeModel });
   } catch (error: any) {
-    console.error("Gemini API error:", error);
+    console.error("Gemini/OpenRouter API error:", error);
     return res.status(500).json({ 
       error: error.message || "Tizimda xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring." 
     });

@@ -53,6 +53,16 @@ export default function App() {
   const [mode, setMode] = useState<'chat' | 'design'>('chat');
   const [designs, setDesigns] = useState<DesignEntry[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string>('');
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => localStorage.getItem('openrouter_api_key') || '');
+  const [customModel, setCustomModel] = useState<string>(() => localStorage.getItem('openrouter_custom_model') || 'meta-llama/llama-3-8b-instruct:free');
+
+  useEffect(() => {
+    localStorage.setItem('openrouter_api_key', openRouterKey);
+  }, [openRouterKey]);
+
+  useEffect(() => {
+    localStorage.setItem('openrouter_custom_model', customModel);
+  }, [customModel]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -353,8 +363,9 @@ export default function App() {
             image: m.image
           })),
           persona: activeSession.persona,
-          model: activeSession.model || DEFAULT_MODEL_ID,
-          stream: true // Stream rejimini yoqish
+          model: activeSession.model === 'openrouter/custom' ? customModel : activeSession.model || DEFAULT_MODEL_ID,
+          openRouterKey: openRouterKey,
+          stream: true
         })
       });
 
@@ -709,6 +720,7 @@ export default function App() {
           setDesigns={setDesigns}
           activeDesignId={activeDesignId}
           setActiveDesignId={setActiveDesignId}
+          openRouterKey={openRouterKey}
         />
       ) : (
       <div className="flex flex-1 flex-col h-full overflow-hidden bg-[#F8FAFC] relative">
@@ -801,6 +813,43 @@ export default function App() {
                         })}
                       </div>
                       
+                      {/* OpenRouter Sozlamalari */}
+                      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 space-y-2.5">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          <Cpu className="h-3.5 w-3.5" />
+                          <span>OpenRouter Sozlamalari</span>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">OpenRouter API Key:</label>
+                          <input
+                            type="password"
+                            placeholder="sk-or-v1-..."
+                            value={openRouterKey}
+                            onChange={(e) => setOpenRouterKey(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full bg-white border border-slate-250 text-xs px-2.5 py-1.5 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                          />
+                        </div>
+
+                        {activeSession.model === 'openrouter/custom' && (
+                          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                            <label className="block text-[10px] font-semibold text-slate-400 mb-1">Custom Model Nomi:</label>
+                            <input
+                              type="text"
+                              placeholder="anthropic/claude-3.5-sonnet"
+                              value={customModel}
+                              onChange={(e) => setCustomModel(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full bg-white border border-slate-250 text-xs px-2.5 py-1.5 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1 italic">
+                              Masalan: anthropic/claude-3.5-sonnet yoki meta-llama/llama-3-8b-instruct
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
                         <p className="text-[10px] text-slate-400 text-center">
                           Modellar ro'yxatini <code className="bg-slate-100 px-1 py-0.5 rounded text-[9px] font-mono">src/data/models.ts</code> faylida tahrirlang
