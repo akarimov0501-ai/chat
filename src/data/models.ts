@@ -15,41 +15,34 @@ import { ModelConfig } from '../types';
  */
 export const MODELS: ModelConfig[] = [
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    description: 'Tez va samarali — kundalik vazifalar uchun ideal',
-    badge: 'Tez',
-    badgeColor: 'emerald'
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    description: 'Eng yangi avlod — nihoyatda tezkor va yuqori sifatli',
+    badge: 'Flagman',
+    badgeColor: 'rose'
   },
   {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro',
-    description: 'Kuchli va aqlli — murakkab vazifalar uchun',
-    badge: 'Pro',
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    description: 'Yangi Gemini 3 arxitekturasining tezkor versiyasi (Preview)',
+    badge: 'Yangi',
     badgeColor: 'violet'
   },
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    description: 'Oldingi avlod tez modeli — barqaror va ishonchli',
-    badge: 'Barqaror',
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    description: 'Tez va resurs tejamkor model — kundalik yumushlar uchun',
+    badge: 'Lite',
+    badgeColor: 'emerald'
+  },
+  {
+    id: 'gemma-4-31b-it',
+    name: 'Gemma 4 31B',
+    description: 'Ochiq kodli model — mantiqiy va ijodiy topshiriqlar uchun',
+    badge: 'Gemma',
     badgeColor: 'blue'
-  },
-  {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash Lite',
-    description: 'Eng yengil model — oddiy va tez javoblar uchun',
-    badge: 'Yengil',
-    badgeColor: 'amber'
-  },
-  {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    description: 'Eng yangi avlod — tezkor va yuqori sifatli',
-    badge: 'Yangi',
-    badgeColor: 'rose'
   },
 ];
 
 /** Standart (default) model ID */
-export const DEFAULT_MODEL_ID = 'gemini-2.5-flash';
+export const DEFAULT_MODEL_ID = 'gemini-3.5-flash';
