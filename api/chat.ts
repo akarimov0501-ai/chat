@@ -10,13 +10,20 @@ const PERSONA_INSTRUCTIONS: Record<string, string> = {
   designer: "You are an expert UI/UX designer and frontend developer. When the user describes a UI design, you MUST generate a COMPLETE, self-contained HTML page with all CSS included inline in <style> tags and any JavaScript in <script> tags. The design must be modern, responsive, visually stunning with gradients, shadows, animations, and professional typography (use Google Fonts via CDN link). Use vibrant colors and micro-animations. Return ONLY the HTML code wrapped in ```html code block. Do NOT add any explanation or description outside the code block. The HTML must be a complete document starting with <!DOCTYPE html>."
 };
 
+const FALLBACK_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite',
+  'gemma-4-31b-it'
+];
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Faqat POST so'rov qabul qilinadi." });
   }
 
   try {
-    const { messages, persona = "general", model = "gemini-2.5-flash", stream = false } = req.body;
+    const { messages, persona = "general", model = "gemini-3.5-flash", stream = false } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat tarixi yuborilmadi." });
@@ -53,20 +60,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const systemInstruction = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.general;
 
-    // Agar stream rejim so'ralgan bo'lsa (Dizayn live holati uchun)
+    // Tanlangan model va fallback modellarni sinash ro'yxati
+    const modelsToTry = [model, ...FALLBACK_MODELS.filter(m => m !== model)];
+
+    // Stream rejim
     if (stream) {
+      let responseStream = null;
+      let activeModel = model;
+      let success = false;
+      let lastError: any = null;
+
+      for (const currentModel of modelsToTry) {
+        try {
+          responseStream = await ai.models.generateContentStream({
+            model: currentModel,
+            contents,
+            config: {
+              systemInstruction,
+              temperature: 0.7,
+            }
+          });
+          activeModel = currentModel;
+          success = true;
+          break;
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`Model ${currentModel} stream failed, trying fallback...`, err);
+        }
+      }
+
+      if (!success || !responseStream) {
+        return res.status(500).json({ 
+          error: `Barcha modellar band yoki xatolik yuz berdi. Oxirgi xatolik: ${lastError?.message || 'Noma\'lum'}` 
+        });
+      }
+
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      const responseStream = await ai.models.generateContentStream({
-        model,
-        contents,
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        }
-      });
+      // Ishlatilgan model haqida ma'lumotni event-stream boshida yuborish
+      res.write(`data: ${JSON.stringify({ meta: { model: activeModel } })}\n\n`);
 
       for await (const chunk of responseStream) {
         const text = chunk.text;
@@ -78,18 +112,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.end();
     }
 
-    // Oddiy rejim
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
+    // Oddiy rejim (Fallback mantiq bilan)
+    let response = null;
+    let activeModel = model;
+    let success = false;
+    let lastError: any = null;
+
+    for (const currentModel of modelsToTry) {
+      try {
+        response = await ai.models.generateContent({
+          model: currentModel,
+          contents,
+          config: {
+            systemInstruction,
+            temperature: 0.7,
+          }
+        });
+        activeModel = currentModel;
+        success = true;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${currentModel} failed, trying fallback...`, err);
       }
-    });
+    }
+
+    if (!success || !response) {
+      return res.status(500).json({ 
+        error: `Barcha modellar band yoki xatolik yuz berdi. Oxirgi xatolik: ${lastError?.message || 'Noma\'lum'}` 
+      });
+    }
 
     const replyText = response.text || "Kechirasiz, javob olishda xatolik yuz berdi.";
-    return res.status(200).json({ reply: replyText, model });
+    return res.status(200).json({ reply: replyText, model: activeModel });
   } catch (error: any) {
     console.error("Gemini API error:", error);
     return res.status(500).json({ 

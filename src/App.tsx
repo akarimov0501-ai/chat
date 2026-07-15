@@ -304,6 +304,18 @@ export default function App() {
     setLoading(true);
     setError(null);
 
+    // AI model javobi uchun bitta bo'sh xabar oldindan yaratamiz (Stream chunklari tushadigan joy)
+    const modelMsgId = 'msg-model-' + Date.now();
+    const newModelMessage: ChatMessage = {
+      id: modelMsgId,
+      role: 'model',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    // Model xabarini sessiya ichiga kiritib qo'yamiz
+    setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, messages: [...updatedMessages, newModelMessage] } : s));
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -315,31 +327,79 @@ export default function App() {
             image: m.image
           })),
           persona: activeSession.persona,
-          model: activeSession.model || DEFAULT_MODEL_ID
+          model: activeSession.model || DEFAULT_MODEL_ID,
+          stream: true // Stream rejimini yoqish
         })
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Server javob bermadi.');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Server javob bermadi.');
       }
 
-      const modelMessage: ChatMessage = {
-        id: 'msg-' + Date.now(),
-        role: 'model',
-        content: data.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder('utf-8');
+      if (!reader) throw new Error('Stream oqimini ochib bo\'lmadi.');
 
-      setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, messages: [...updatedMessages, modelMessage] } : s));
-      // If connected status wasn't set, mark as connected on successful response
+      let accumulatedText = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === '[DONE]') break;
+
+            try {
+              const parsed = JSON.parse(dataStr);
+              
+              // Agar model o'zgargan bo'lsa (server fallback qilgan bo'lsa)
+              if (parsed.meta && parsed.meta.model) {
+                const finalModel = parsed.meta.model;
+                setSessions(prev => prev.map(s => 
+                  s.id === activeSession.id ? { ...s, model: finalModel } : s
+                ));
+              }
+
+              if (parsed.text) {
+                accumulatedText += parsed.text;
+                // Ekranda real-time yangilash
+                setSessions(prev => prev.map(s => {
+                  if (s.id === activeSession.id) {
+                    const updatedMsgs = s.messages.map(m => 
+                      m.id === modelMsgId ? { ...m, content: accumulatedText } : m
+                    );
+                    return { ...s, messages: updatedMsgs };
+                  }
+                  return s;
+                }));
+              }
+            } catch (e) {
+              // chunk parse error ignored
+            }
+          }
+        }
+      }
+
       if (apiConnected === null || apiConnected === false) {
         setApiConnected(true);
       }
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
+      // Agar stream muvaffaqiyatsiz tugasa, o'sha model xabarini tozalash
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSession.id) {
+          const updatedMsgs = s.messages.filter(m => m.id !== modelMsgId);
+          return { ...s, messages: updatedMsgs };
+        }
+        return s;
+      }));
     } finally {
       setLoading(false);
     }
