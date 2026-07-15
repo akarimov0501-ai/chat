@@ -44,3 +44,18 @@ export interface DesignEntry {
   code: string;
   timestamp: string;
 }
+
+export interface Slide {
+  id: string;
+  title: string;
+  content: string[];
+  notes?: string;
+  bgGradient?: string;
+}
+
+export interface PresentationEntry {
+  id: string;
+  title: string;
+  slides: Slide[];
+  createdAt: string;
+}

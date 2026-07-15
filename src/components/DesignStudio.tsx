@@ -66,6 +66,11 @@ export default function DesignStudio({
   const [overrideFont, setOverrideFont] = useState<string>('Outfit');
   const [overrideSize, setOverrideSize] = useState<string>('24px');
   const [showEditorPanel, setShowEditorPanel] = useState<boolean>(false);
+  
+  // Element Inspector States
+  const [inspectorActive, setInspectorActive] = useState<boolean>(false);
+  const [selectedElText, setSelectedElText] = useState<string>('');
+  const [selectedElRef, setSelectedElRef] = useState<any>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -150,11 +155,48 @@ const DESIGN_SUGGESTIONS = [
     else if (overrideTarget === 'body') selector = 'body, p, span, li, a';
     else if (overrideTarget === 'buttons') selector = 'button, .btn, input[type="button"], input[type="submit"]';
 
+    const palette = PALETTES.find(p => p.id === selectedPalette);
+    const colorOverrides = palette ? `
+      :root {
+        --primary: ${palette.primary} !important;
+        --secondary: ${palette.secondary} !important;
+        --accent: ${palette.accent} !important;
+        --background: ${palette.bg} !important;
+        --bg: ${palette.bg} !important;
+      }
+      
+      body {
+        background-color: ${palette.bg} !important;
+      }
+
+      button, .btn, [class*="bg-indigo"], [class*="bg-blue"], [class*="bg-violet"], [class*="bg-purple"], .bg-primary {
+        background-color: ${palette.primary} !important;
+        color: #ffffff !important;
+      }
+
+      [class*="text-indigo"], [class*="text-blue"], [class*="text-violet"], [class*="text-purple"], .text-primary {
+        color: ${palette.primary} !important;
+      }
+
+      button:hover, .btn:hover {
+        opacity: 0.9 !important;
+      }
+
+      [class*="bg-rose"], [class*="bg-pink"], [class*="bg-amber"], [class*="bg-yellow"] {
+        background-color: ${palette.accent} !important;
+      }
+
+      [class*="text-rose"], [class*="text-pink"], [class*="text-amber"] {
+        color: ${palette.accent} !important;
+      }
+    ` : '';
+
     styleElement.innerHTML = `
       ${selector} {
         font-family: '${overrideFont}', sans-serif !important;
         ${overrideSize ? `font-size: ${overrideSize} !important;` : ''}
       }
+      ${colorOverrides}
     `;
   };
 
@@ -162,7 +204,76 @@ const DESIGN_SUGGESTIONS = [
   useEffect(() => {
     const timer = setTimeout(applyOverrides, 300);
     return () => clearTimeout(timer);
-  }, [generatedCode, streamText, overrideTarget, overrideFont, overrideSize, viewMode]);
+  }, [generatedCode, streamText, overrideTarget, overrideFont, overrideSize, selectedPalette, viewMode]);
+
+  // Inspector Logic
+  useEffect(() => {
+    if (!iframeRef.current || viewMode !== 'preview') return;
+    const iframe = iframeRef.current;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const handleMouseOver = (e: MouseEvent) => {
+      if (!inspectorActive) return;
+      e.stopPropagation();
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'BODY' || el.tagName === 'HTML') return;
+      el.style.outline = '2px dashed #8b5cf6';
+      el.style.outlineOffset = '2px';
+      el.style.cursor = 'pointer';
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      if (!inspectorActive) return;
+      e.stopPropagation();
+      const el = e.target as HTMLElement;
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+      el.style.cursor = '';
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (!inspectorActive) return;
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'BODY' || el.tagName === 'HTML') return;
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+      el.style.cursor = '';
+      
+      setSelectedElRef(el);
+      setSelectedElText(el.innerText || el.textContent || '');
+      setInspectorActive(false);
+      setShowEditorPanel(true);
+    };
+
+    if (inspectorActive) {
+      doc.addEventListener('mouseover', handleMouseOver);
+      doc.addEventListener('mouseout', handleMouseOut);
+      doc.addEventListener('click', handleClick, true); // capture phase
+    }
+
+    return () => {
+      doc.removeEventListener('mouseover', handleMouseOver);
+      doc.removeEventListener('mouseout', handleMouseOut);
+      doc.removeEventListener('click', handleClick, true);
+    };
+  }, [inspectorActive, viewMode]);
+
+  // Tanlangan element matnini yangilash
+  const handleUpdateElementText = (newText: string) => {
+    setSelectedElText(newText);
+    if (selectedElRef) {
+      selectedElRef.innerText = newText;
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
+      if (doc) {
+        setGeneratedCode(doc.documentElement.outerHTML);
+      }
+    }
+  };
 
   // Iframe ni har gal generatedCode o'zgarganda tozalab yangilash
   useEffect(() => {
@@ -651,6 +762,59 @@ const DESIGN_SUGGESTIONS = [
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  {/* Element Inspector */}
+                  <hr className="border-slate-100" />
+                  
+                  <div className="space-y-3 pb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Blok Tahrirlagich 🎯</label>
+                    <p className="text-[9px] text-slate-400 leading-normal">
+                      Dizayndagi istalgan matn yoki tugmani kursor yordamida tanlab, matnini bevosita o'zgartiring.
+                    </p>
+                    
+                    <button
+                      onClick={() => setInspectorActive(!inspectorActive)}
+                      className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
+                        inspectorActive 
+                          ? 'bg-rose-500 text-white border-rose-500 shadow-md shadow-rose-500/10' 
+                          : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                      }`}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {inspectorActive ? 'Tanlash rejimi faol...' : 'Blokni tanlash'}
+                    </button>
+
+                    {selectedElRef && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 space-y-2 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                            Blok: <code className="bg-slate-200 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">&lt;{selectedElRef.tagName.toLowerCase()}&gt;</code>
+                          </span>
+                          <button
+                            onClick={() => {
+                              setSelectedElRef(null);
+                              setSelectedElText('');
+                            }}
+                            className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                            title="Bekor qilish"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="block text-[9px] font-bold text-slate-400">Matnni tahrirlash:</label>
+                          <textarea
+                            value={selectedElText}
+                            onChange={(e) => handleUpdateElementText(e.target.value)}
+                            rows={3}
+                            className="w-full bg-white border border-slate-200 text-xs px-2.5 py-1.5 rounded-lg outline-none focus:border-violet-500 shadow-sm font-medium leading-relaxed"
+                            placeholder="Matnni kiriting..."
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

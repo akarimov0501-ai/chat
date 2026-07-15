@@ -28,14 +28,16 @@ import {
   CircleCheck,
   Wifi,
   WifiOff,
-  Palette
+  Palette,
+  Presentation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChatSession, ChatMessage, PersonaType, DesignEntry } from './types';
+import { ChatSession, ChatMessage, PersonaType, DesignEntry, PresentationEntry, Slide } from './types';
 import { PERSONAS } from './data/personas';
 import { MODELS, DEFAULT_MODEL_ID } from './data/models';
 import MarkdownRenderer from './components/MarkdownRenderer';
 import DesignStudio from './components/DesignStudio';
+import PresentationStudio from './components/PresentationStudio';
 
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -50,9 +52,11 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<'chat' | 'design'>('chat');
+  const [mode, setMode] = useState<'chat' | 'design' | 'presentation'>('chat');
   const [designs, setDesigns] = useState<DesignEntry[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string>('');
+  const [presentations, setPresentations] = useState<PresentationEntry[]>([]);
+  const [activePresentationId, setActivePresentationId] = useState<string>('');
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => localStorage.getItem('openrouter_api_key') || '');
   const [customModel, setCustomModel] = useState<string>(() => localStorage.getItem('openrouter_custom_model') || 'meta-llama/llama-3-8b-instruct:free');
 
@@ -136,6 +140,20 @@ export default function App() {
       }
     }
 
+    // 3. Presentations history yuklash
+    const savedPresentations = localStorage.getItem('presentation_history');
+    if (savedPresentations) {
+      try {
+        const parsedPres = JSON.parse(savedPresentations) as PresentationEntry[];
+        if (parsedPres.length > 0) {
+          setPresentations(parsedPres);
+          setActivePresentationId(parsedPres[0].id);
+        }
+      } catch (e) {
+        console.error('Error parsing stored presentations:', e);
+      }
+    }
+
     function createFallbackSession() {
       const initialSession: ChatSession = {
         id: 'session-' + Date.now(),
@@ -161,6 +179,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('design_history', JSON.stringify(designs));
   }, [designs]);
+
+  // Save presentations to LocalStorage on change
+  useEffect(() => {
+    localStorage.setItem('presentation_history', JSON.stringify(presentations));
+  }, [presentations]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -518,8 +541,8 @@ export default function App() {
       {/* Sidebar for Desktop & Drawer for Mobile */}
       <div 
         id="sidebar"
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white text-slate-600 transition-transform duration-300 md:static md:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white text-slate-600 transition-all duration-300 md:static ${
+          sidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:border-r-0 overflow-hidden'
         }`}
       >
         {/* Sidebar Header */}
@@ -534,7 +557,7 @@ export default function App() {
           </div>
           <button 
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 md:hidden cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -545,25 +568,36 @@ export default function App() {
           <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/50">
             <button
               onClick={() => setMode('chat')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 mode === 'chat'
                   ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/20'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
+              title="Chat (Suhbat)"
             >
-              <MessageSquare className="h-3.5 w-3.5" />
-              Suhbat
+              <MessageSquare className="h-4 w-4" />
             </button>
             <button
               onClick={() => setMode('design')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 mode === 'design'
                   ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/20'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
+              title="Dizayn Studio"
             >
-              <Palette className="h-3.5 w-3.5" />
-              Dizayn
+              <Palette className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setMode('presentation')}
+              className={`flex-1 flex items-center justify-center py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                mode === 'presentation'
+                  ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/20'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="Taqdimot (Prezentatsiya)"
+            >
+              <Presentation className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -709,6 +743,70 @@ export default function App() {
         </div>
         )}
 
+        {/* Presentation List */}
+        {mode === 'presentation' && (
+        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1">
+          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">
+            <span>Prezentatsiyalar</span>
+            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[9px] font-bold">{presentations.length}</span>
+          </div>
+          {presentations.length === 0 ? (
+            <div className="text-center py-8 text-xs text-slate-400">
+              <Presentation className="h-8 w-8 mx-auto mb-2 text-slate-300 opacity-60" />
+              Prezentatsiyalar mavjud emas
+            </div>
+          ) : (
+            presentations.map((presentation) => {
+              const isSelected = presentation.id === activePresentationId;
+              return (
+                <div
+                  key={presentation.id}
+                  onClick={() => {
+                    setActivePresentationId(presentation.id);
+                    if (window.innerWidth < 768) setSidebarOpen(false);
+                  }}
+                  className={`group flex items-center justify-between rounded-xl px-3 py-2.5 transition-all cursor-pointer ${
+                    isSelected 
+                      ? 'bg-slate-50 text-slate-800 font-medium border border-slate-100 shadow-sm' 
+                      : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                      isSelected ? 'bg-violet-50 text-violet-600' : 'bg-slate-100 text-slate-400'
+                    }`}>
+                      <Presentation className="h-4 w-4" />
+                    </div>
+                    <span className="truncate text-sm font-medium text-left" title={presentation.title}>
+                      {presentation.title}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const updatedPres = presentations.filter(p => p.id !== presentation.id);
+                        setPresentations(updatedPres);
+                        if (activePresentationId === presentation.id && updatedPres.length > 0) {
+                          setActivePresentationId(updatedPres[0].id);
+                        } else if (updatedPres.length === 0) {
+                          setActivePresentationId('');
+                        }
+                      }}
+                      className="p-1 hover:text-rose-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="O'chirish"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        )}
+
       </div>
 
       {/* Main Content Area */}
@@ -722,6 +820,16 @@ export default function App() {
           setActiveDesignId={setActiveDesignId}
           openRouterKey={openRouterKey}
         />
+      ) : mode === 'presentation' ? (
+        <PresentationStudio
+          model={activeSession?.model || DEFAULT_MODEL_ID}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          presentations={presentations}
+          setPresentations={setPresentations}
+          activePresentationId={activePresentationId}
+          setActivePresentationId={setActivePresentationId}
+          openRouterKey={openRouterKey}
+        />
       ) : (
       <div className="flex flex-1 flex-col h-full overflow-hidden bg-[#F8FAFC] relative">
         {/* Header */}
@@ -730,7 +838,7 @@ export default function App() {
             <button 
               id="sidebar-toggle"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 md:hidden cursor-pointer"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 cursor-pointer"
             >
               <Menu className="h-5 w-5" />
             </button>
