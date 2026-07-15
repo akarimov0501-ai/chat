@@ -31,7 +31,7 @@ import {
   Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChatSession, ChatMessage, PersonaType } from './types';
+import { ChatSession, ChatMessage, PersonaType, DesignEntry } from './types';
 import { PERSONAS } from './data/personas';
 import { MODELS, DEFAULT_MODEL_ID } from './data/models';
 import MarkdownRenderer from './components/MarkdownRenderer';
@@ -51,6 +51,8 @@ export default function App() {
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
   const [mode, setMode] = useState<'chat' | 'design'>('chat');
+  const [designs, setDesigns] = useState<DesignEntry[]>([]);
+  const [activeDesignId, setActiveDesignId] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,38 +87,57 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Load sessions from LocalStorage on mount
+  // Load sessions and designs from LocalStorage on mount
   useEffect(() => {
+    // 1. Chat sessions yuklash
     const saved = localStorage.getItem('ai_chat_sessions');
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as ChatSession[];
         if (parsed.length > 0) {
-          // Migrate old sessions that don't have model field
           const migrated = parsed.map(s => ({
             ...s,
             model: s.model || DEFAULT_MODEL_ID
           }));
           setSessions(migrated);
           setActiveSessionId(migrated[0].id);
-          return;
+        } else {
+          createFallbackSession();
         }
       } catch (e) {
         console.error('Error parsing stored sessions:', e);
+        createFallbackSession();
+      }
+    } else {
+      createFallbackSession();
+    }
+
+    // 2. Designs history yuklash
+    const savedDesigns = localStorage.getItem('design_history');
+    if (savedDesigns) {
+      try {
+        const parsedDesigns = JSON.parse(savedDesigns) as DesignEntry[];
+        if (parsedDesigns.length > 0) {
+          setDesigns(parsedDesigns);
+          setActiveDesignId(parsedDesigns[0].id);
+        }
+      } catch (e) {
+        console.error('Error parsing stored designs:', e);
       }
     }
-    
-    // Create an initial session if none exist
-    const initialSession: ChatSession = {
-      id: 'session-' + Date.now(),
-      title: 'Yangi suhbat',
-      messages: [],
-      persona: 'general',
-      model: DEFAULT_MODEL_ID,
-      createdAt: new Date().toISOString()
-    };
-    setSessions([initialSession]);
-    setActiveSessionId(initialSession.id);
+
+    function createFallbackSession() {
+      const initialSession: ChatSession = {
+        id: 'session-' + Date.now(),
+        title: 'Yangi suhbat',
+        messages: [],
+        persona: 'general',
+        model: DEFAULT_MODEL_ID,
+        createdAt: new Date().toISOString()
+      };
+      setSessions([initialSession]);
+      setActiveSessionId(initialSession.id);
+    }
   }, []);
 
   // Save sessions to LocalStorage on change
@@ -125,6 +146,11 @@ export default function App() {
       localStorage.setItem('ai_chat_sessions', JSON.stringify(sessions));
     }
   }, [sessions]);
+
+  // Save designs to LocalStorage on change
+  useEffect(() => {
+    localStorage.setItem('design_history', JSON.stringify(designs));
+  }, [designs]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -486,16 +512,18 @@ export default function App() {
         }`}
       >
         {/* Sidebar Header */}
-        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-6">
+        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-6 bg-white/50 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white font-bold shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white font-extrabold shadow-md shadow-indigo-500/20 transform hover:rotate-6 transition-transform">
               A
             </div>
-            <span className="font-bold text-slate-800 tracking-tight text-lg">AI-Oshno</span>
+            <span className="font-display font-extrabold text-slate-900 tracking-tight text-lg bg-clip-text bg-gradient-to-r from-slate-900 to-slate-700">
+              AI-Oshno
+            </span>
           </div>
           <button 
             onClick={() => setSidebarOpen(false)}
-            className="rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 md:hidden cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 md:hidden cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -503,12 +531,12 @@ export default function App() {
 
         {/* Mode Tabs */}
         <div className="px-4 pt-4 pb-2">
-          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/50">
             <button
               onClick={() => setMode('chat')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 mode === 'chat'
-                  ? 'bg-white text-slate-800 shadow-sm'
+                  ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/20'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -517,9 +545,9 @@ export default function App() {
             </button>
             <button
               onClick={() => setMode('design')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 mode === 'design'
-                  ? 'bg-white text-slate-800 shadow-sm'
+                  ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/20'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -534,7 +562,7 @@ export default function App() {
         <div className="px-4 pb-2">
           <button
             onClick={() => createNewSession('general')}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 border border-indigo-100 py-2.5 px-4 text-sm font-semibold text-indigo-700 transition-all hover:bg-indigo-100 active:scale-98 cursor-pointer"
+            className="flex w-full items-center justify-center gap-2 rounded-xl btn-premium-indigo py-2.5 px-4 text-xs font-bold transition-all duration-200 active:scale-98 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>Yangi suhbat</span>
@@ -612,6 +640,64 @@ export default function App() {
           })}
         </div>
 
+        {/* Designs List */}
+        {mode === 'design' && (
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+          <div className="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Dizaynlar tarixi</div>
+          {designs.length === 0 ? (
+            <div className="px-3 py-4 text-xs text-slate-400 italic">Dizaynlar mavjud emas</div>
+          ) : (
+            designs.map((design) => {
+              const isSelected = design.id === activeDesignId;
+              return (
+                <div
+                  key={design.id}
+                  onClick={() => {
+                    setActiveDesignId(design.id);
+                    if (window.innerWidth < 768) setSidebarOpen(false);
+                  }}
+                  className={`group flex items-center justify-between rounded-xl px-3 py-2.5 transition-all cursor-pointer ${
+                    isSelected 
+                      ? 'bg-slate-50 text-slate-800 font-medium border border-slate-100 shadow-sm' 
+                      : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                      isSelected ? 'bg-violet-50 text-violet-600' : 'bg-slate-100 text-slate-400'
+                    }`}>
+                      <Palette className="h-4 w-4" />
+                    </div>
+                    <span className="truncate text-sm font-medium text-left" title={design.prompt}>
+                      {design.prompt}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const updatedDesigns = designs.filter(d => d.id !== design.id);
+                        setDesigns(updatedDesigns);
+                        if (activeDesignId === design.id && updatedDesigns.length > 0) {
+                          setActiveDesignId(updatedDesigns[0].id);
+                        } else if (updatedDesigns.length === 0) {
+                          setActiveDesignId('');
+                        }
+                      }}
+                      className="p-1 hover:text-rose-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="O'chirish"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        )}
+
       </div>
 
       {/* Main Content Area */}
@@ -619,6 +705,10 @@ export default function App() {
         <DesignStudio 
           model={activeSession?.model || DEFAULT_MODEL_ID} 
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          designs={designs}
+          setDesigns={setDesigns}
+          activeDesignId={activeDesignId}
+          setActiveDesignId={setActiveDesignId}
         />
       ) : (
       <div className="flex flex-1 flex-col h-full overflow-hidden bg-[#F8FAFC] relative">

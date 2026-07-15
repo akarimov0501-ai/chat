@@ -37,3 +37,10 @@ export interface ModelConfig {
   badge: string;
   badgeColor: string;
 }
+
+export interface DesignEntry {
+  id: string;
+  prompt: string;
+  code: string;
+  timestamp: string;
+}

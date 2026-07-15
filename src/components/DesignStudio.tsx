@@ -19,17 +19,15 @@ import {
   Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface DesignEntry {
-  id: string;
-  prompt: string;
-  code: string;
-  timestamp: string;
-}
+import { DesignEntry } from '../types';
 
 interface DesignStudioProps {
   model: string;
   onToggleSidebar?: () => void;
+  designs: DesignEntry[];
+  setDesigns: React.Dispatch<React.SetStateAction<DesignEntry[]>>;
+  activeDesignId: string;
+  setActiveDesignId: (id: string) => void;
 }
 
 const DESIGN_SUGGESTIONS = [
@@ -39,7 +37,14 @@ const DESIGN_SUGGESTIONS = [
   "Portfolio sahifasi — hero qism, loyihalar galereyasi va bog'lanish shakli",
 ];
 
-export default function DesignStudio({ model, onToggleSidebar }: DesignStudioProps) {
+export default function DesignStudio({ 
+  model, 
+  onToggleSidebar,
+  designs,
+  setDesigns,
+  activeDesignId,
+  setActiveDesignId
+}: DesignStudioProps) {
   const [prompt, setPrompt] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [streamText, setStreamText] = useState('');
@@ -47,7 +52,6 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [history, setHistory] = useState<DesignEntry[]>([]);
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,30 +62,18 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
     mobile: '375px'
   };
 
-  // Load design history and last code on mount
+  // Faol tanlangan dizayn o'zgarganida uning kodini yuklash
   useEffect(() => {
-    const savedHistory = localStorage.getItem('design_history');
-    if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error('Error parsing design history:', e);
+    if (activeDesignId) {
+      const activeDesign = designs.find(d => d.id === activeDesignId);
+      if (activeDesign) {
+        setGeneratedCode(activeDesign.code);
+        setStreamText(activeDesign.code);
       }
     }
+  }, [activeDesignId, designs]);
 
-    const savedLastCode = localStorage.getItem('last_generated_design');
-    if (savedLastCode) {
-      setGeneratedCode(savedLastCode);
-      setStreamText(savedLastCode);
-    }
-  }, []);
-
-  // Save history on change
-  useEffect(() => {
-    localStorage.setItem('design_history', JSON.stringify(history));
-  }, [history]);
-
-  // Save generatedCode on change
+  // Save generatedCode on change (oxirgi ko'rilgan dizayn)
   useEffect(() => {
     if (generatedCode) {
       localStorage.setItem('last_generated_design', generatedCode);
@@ -89,6 +81,17 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
       localStorage.removeItem('last_generated_design');
     }
   }, [generatedCode]);
+
+  // Load last generated design code on mount if there's no active design selected
+  useEffect(() => {
+    if (!activeDesignId) {
+      const savedLastCode = localStorage.getItem('last_generated_design');
+      if (savedLastCode) {
+        setGeneratedCode(savedLastCode);
+        setStreamText(savedLastCode);
+      }
+    }
+  }, []);
 
   // Agar live rejimda kod kelayotgan bo'lsa, uni real-time ko'rsatish
   const activeCodeDisplay = generatedCode || streamText;
@@ -204,7 +207,8 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
         code: finalHtml,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setHistory(prev => [newEntry, ...prev]);
+      setDesigns(prev => [newEntry, ...prev]);
+      setActiveDesignId(newEntry.id);
       setPrompt('');
     } catch (err: any) {
       setError(err.message || 'Xatolik yuz berdi.');
@@ -227,18 +231,6 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
     link.download = 'design.html';
     link.click();
     URL.revokeObjectURL(url);
-  };
-
-  const loadFromHistory = (entry: DesignEntry) => {
-    setGeneratedCode(entry.code);
-    setStreamText(entry.code);
-    setViewMode('preview');
-  };
-
-  const clearHistory = () => {
-    setHistory([]);
-    setGeneratedCode('');
-    setStreamText('');
   };
 
   return (
@@ -477,29 +469,6 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
       {/* Input Area */}
       <div className="p-4 md:p-6 bg-white border-t border-slate-100 shrink-0">
         <div className="max-w-4xl mx-auto">
-          {/* History (Mobil uchun gorizontal skrol) */}
-          {history.length > 0 && (
-            <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1.5 no-scrollbar">
-              <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">Tarix:</span>
-              {history.slice(0, 4).map(entry => (
-                <button
-                  key={entry.id}
-                  onClick={() => loadFromHistory(entry)}
-                  className="shrink-0 px-2.5 py-1 rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition-all cursor-pointer truncate max-w-[120px]"
-                  title={entry.prompt}
-                >
-                  {entry.prompt}
-                </button>
-              ))}
-              <button
-                onClick={clearHistory}
-                className="shrink-0 p-1 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                title="Tarixni tozalash"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          )}
 
           <div className="flex items-center gap-2 md:gap-3 bg-slate-50 rounded-2xl p-1.5 md:p-2 border border-slate-200 focus-within:ring-2 focus-within:ring-violet-100 transition-all shadow-sm">
             <div className="p-2 text-violet-500 shrink-0">
