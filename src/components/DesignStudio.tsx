@@ -58,6 +58,38 @@ export default function DesignStudio({ model, onToggleSidebar }: DesignStudioPro
     mobile: '375px'
   };
 
+  // Load design history and last code on mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('design_history');
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error('Error parsing design history:', e);
+      }
+    }
+
+    const savedLastCode = localStorage.getItem('last_generated_design');
+    if (savedLastCode) {
+      setGeneratedCode(savedLastCode);
+      setStreamText(savedLastCode);
+    }
+  }, []);
+
+  // Save history on change
+  useEffect(() => {
+    localStorage.setItem('design_history', JSON.stringify(history));
+  }, [history]);
+
+  // Save generatedCode on change
+  useEffect(() => {
+    if (generatedCode) {
+      localStorage.setItem('last_generated_design', generatedCode);
+    } else {
+      localStorage.removeItem('last_generated_design');
+    }
+  }, [generatedCode]);
+
   // Agar live rejimda kod kelayotgan bo'lsa, uni real-time ko'rsatish
   const activeCodeDisplay = generatedCode || streamText;
 
